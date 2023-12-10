@@ -1,0 +1,387 @@
+import pygame, random, sys
+from pygame.locals import *
+from queue import PriorityQueue
+
+
+pygame.init()
+
+# Set up the screen
+screen_width = 800
+screen_height = 600
+screen = pygame.display.set_mode((screen_width, screen_height))
+pygame.display.set_caption('Mouse and Cat Game')
+
+
+
+class Menu:
+    def __init__(self, screen_width, screen_height):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.level_size = 10
+        self.difficulty = "easy"
+        self.start_button_rect = pygame.Rect(self.screen_width // 2 - 50, self.screen_height // 2 + 50, 100, 50)
+        self.font = pygame.font.Font(None, 30)
+        self.level_input_rect = pygame.Rect(self.screen_width // 2, self.screen_height // 2 - 50, 50, 30)
+        self.diff_input_rect = pygame.Rect(self.screen_width // 2, self.screen_height // 2, 100, 30)
+        self.mouse_pos = None  # define mouse_pos here
+
+    def draw(self, screen):
+        # draw menu background image
+        menu_bg = pygame.image.load("menu_bg.png")
+        screen.blit(menu_bg, (0, 0))
+
+        # draw level size input field
+        level_text = self.font.render("Level size: ", True, (255, 255, 255))
+        screen.blit(level_text, (self.screen_width // 2 - 100, self.screen_height // 2 - 50))
+        pygame.draw.rect(screen, (255, 255, 255), self.level_input_rect, 2)
+
+        # draw difficulty input field
+        diff_text = self.font.render("Difficulty: ", True, (255, 255, 255))
+        screen.blit(diff_text, (self.screen_width // 2 - 100, self.screen_height // 2))
+        pygame.draw.rect(screen, (255, 255, 255), self.diff_input_rect, 2)  # use self.diff_input_rect here
+
+        # draw start button
+        start_button = self.font.render("Start", True, (255, 255, 255))
+        pygame.draw.rect(screen, (0, 0, 255), self.start_button_rect)
+        screen.blit(start_button, (self.screen_width // 2 - 25, self.screen_height // 2 + 60))
+
+    def handle_events(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.mouse_pos = pygame.mouse.get_pos()  # use self.mouse_pos here
+            if self.start_button_rect.collidepoint(self.mouse_pos):
+                # start game with selected level size and difficulty
+                return True
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                # start game with selected level size and difficulty
+                return True
+            elif event.key == pygame.K_BACKSPACE:
+                # remove last character from input fields
+                if self.level_input_rect.collidepoint(self.mouse_pos):
+                    self.level_size = int(str(self.level_size)[:-1])
+                elif self.diff_input_rect.collidepoint(self.mouse_pos):  # use self.diff_input_rect here
+                    self.difficulty = self.difficulty[:-1]
+            else:
+                # add character to input fields
+                if self.level_input_rect.collidepoint(self.mouse_pos):
+                    self.level_size = int(str(self.level_size) + event.unicode)
+                elif self.diff_input_rect.collidepoint(self.mouse_pos):  # use self.diff_input_rect here
+                    self.difficulty += event.unicode
+        return False
+
+
+class Level:
+    def init(self, size, cat_pos):
+        self.width = size
+        self.height = size
+        self.grid = [[0 for x in range(self.width)] for y in range(self.height)]
+        self.ground_image = pygame.image.load("ground.png")
+        self.wall_image = pygame.image.load("wall.png")
+        self.obstacle_image = pygame.image.load("obstacle.png")
+        self.coin_image = pygame.image.load("coin.png")
+        self.cheese_image = pygame.image.load("cheese.png")
+        self.mouse_image = pygame.image.load("mouse.png")
+        self.cat_image = pygame.image.load("cat.png")
+        self.exit_image = pygame.image.load("exit.png")
+        self.player_pos = (self.width - 1, self.height - 1) # player starts at bottom right corner
+        self.cat_pos = (1, 1) # cat starts at top left corner
+        self.exit_pos = (1, 1) # exit starts at top left corner
+        self.get_coins = 0 # counter for collected coins
+
+    def generate(self):
+        # generate walls around the edge of the level
+        for x in range(self.width):
+            self.grid[0][x] = 1
+            self.grid[self.height-1][x] = 1
+        for y in range(self.height):
+            self.grid[y][0] = 1
+            self.grid[y][self.width-1] = 1
+
+        # randomly place obstacles, coins, cheese, and exit
+        num_obstacles = random.randint(1, int((self.width*self.height)/4))
+        num_coins = 3
+        num_cheese = 2
+        x_range = range(1, self.width-1)
+        y_range = range(1, self.height-1)
+        for i in range(num_obstacles):
+            x = random.choice(x_range)
+            y = random.choice(y_range)
+            if self.grid[y][x] == 0:
+                self.grid[y][x] = 2 # obstacle
+        for i in range(num_coins):
+            x = random.choice(x_range)
+            y = random.choice(y_range)
+            if self.grid[y][x] == 0:
+                self.grid[y][x] = 3 # coin
+        for i in range(num_cheese):
+            x = random.choice(x_range)
+            y = random.choice(y_range)
+            if self.grid[y][x] == 0:
+                self.grid[y][x] = 4 # cheese
+        exit_placed = False
+        while not exit_placed:
+            x = random.choice(x_range)
+            y = random.choice(y_range)
+            if self.grid[y][x] == 0:
+                self.grid[y][x] = 5 # exit
+                self.exit_pos = (x, y)
+                exit_placed = True
+
+    def draw(self, screen):
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.grid[y][x] == 0:
+                    screen.blit(self.ground_image, (x*32, y*32))
+                elif self.grid[y][x] == 1:
+                    screen.blit(self.wall_image, (x*32, y*32))
+                elif self.grid[y][x] == 2:
+                    screen.blit(self.obstacle_image, (x*32, y*32))
+                elif self.grid[y][x] == 3:
+                    screen.blit(self.coin_image, (x*32, y*32))
+                elif self.grid[y][x] == 4:
+                    screen.blit(self.cheese_image, (x*32, y*32))
+                elif self.grid[y][x] == 5:
+                    screen.blit(self.exit_image, (x*32, y*32))
+                elif self.grid[y][x] == 6:
+                    screen.blit(self.mouse_image, (x*32, y*32))
+                elif self.grid[y][x] == 7:
+                    screen.blit(self.cat_image, (x*32, y*32))
+
+    def move_player(self, dx, dy):
+        x = self.player_pos[0] + dx
+        y = self.player_pos[1] + dy
+        if self.grid[y][x] == 0 or self.grid[y][x] == 3 or self.grid[y][x] == 4 or self.grid[y][x] == 5:
+            self.grid[self.player_pos[1]][self.player_pos[0]] = 0
+            self.player_pos = (x, y)
+            self.grid[y][x] = 6 # player
+            if self.grid[y][x] == 3:
+                self.get_coins += 1
+            return True
+        else:
+            return False
+
+    def move_cat(self):
+        dx = random.randint(-1, 1)
+        dy = random.randint(-1, 1)
+        x = self.cat_pos[0] + dx
+        y = self.cat_pos[1] + dy
+        if self.grid[y][x] == 0:
+            self.grid[self.cat_pos[1]][self.cat_pos[0]] = 0
+            self.cat_pos = (x, y)
+            self.grid[y][x] = 7 # cat
+
+    def get_player_pos(self):
+        return self.player_pos
+
+    def get_cat_pos(self):
+        return self.cat_pos
+
+    def get_exit_pos(self):
+        return self.exit_pos
+
+
+class Mouse:
+    def init(self, level):
+        self.level = level
+        self.image = pygame.image.load("mouse.png")
+
+    def draw(self, screen):
+        x, y = self.level.get_player_pos()
+        screen.blit(self.image, (x*32, y*32))
+
+    def move(self, dx, dy):
+        if self.level.move_player(dx, dy):
+            x, y = self.level.get_player_pos()
+            if self.level.grid[y][x] == 3:
+                self.level.get_coins += 1
+                self.level.grid[y][x] = 0
+            elif self.level.grid[y][x] == 4:
+                self.level.grid[y][x] = 0
+                for i in range(self.level.width):
+                    for j in range(self.level.height):
+                        if self.level.grid[j][i] == 7:
+                            self.level.grid[j][i] = 0
+                self.level.move_cat()
+            elif self.level.grid[y][x] == 5:
+                exit = Exit(self.level)
+                exit.show_screen()
+                return False
+        return True
+
+
+class Cat:
+    def init(self, level, player_pos):
+        self.level = level
+        self.image = pygame.image.load("cat.png")
+        self.pos = self.find_valid_pos()
+        self.player_pos = player_pos
+        self.move_timer = 0
+
+    def draw(self, screen):
+        x, y = self.pos
+        screen.blit(self.image, (x*32, y*32))
+
+    def find_valid_pos(self):
+        while True:
+            x, y = self.level.get_random_pos()
+            if self.level.grid[y][x] == 0:
+                return (x, y)
+
+    def move(self):
+        if self.move_timer > 0:
+            self.move_timer -= 1
+            return
+
+        path = self.find_shortest_path()
+        if not path:
+            return
+
+        dx, dy = path[0][0] - self.pos[0], path[0][1] - self.pos[1]
+        if self.level.move_cat(dx, dy):
+            self.pos = (self.pos[0] + dx, self.pos[1] + dy)
+
+    def find_shortest_path(self):
+        start = self.pos
+        end = self.player_pos
+
+        frontier = PriorityQueue()
+        frontier.put(start, 0)
+
+        came_from = {}
+        cost_so_far = {}
+        came_from[start] = None
+        cost_so_far[start] = 0
+
+        while not frontier.empty():
+            current = frontier.get()
+
+            if current == end:
+                break
+
+            for next in self.get_neighbors(current):
+                new_cost = cost_so_far[current] + 1
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost + self.heuristic(end, next)
+                    frontier.put(next, priority)
+                    came_from[next] = current
+
+        path = []
+        current = end
+        while current != start:
+            path.append(current)
+            current = came_from[current]
+        path.reverse()
+
+        return path
+
+    def get_neighbors(self, pos):
+        neighbors = []
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            x, y = pos[0] + dx, pos[1] + dy
+            if self.level.is_valid_pos(x, y) and self.level.grid[y][x] == 0:
+                neighbors.append((x, y))
+        return neighbors
+
+    def heuristic(self, a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    def set_move_timer(self):
+        self.move_timer = 30
+
+    def check_collision(self, player_pos):
+        if self.pos == player_pos:
+            return True
+        return False
+
+
+class Exit:
+    def __init__(self, screen):
+        # Загрузка изображений
+        self.loose_image = pygame.image.load('exit_image.png')
+        self.restart_button = pygame.image.load('restart_button.png')
+
+        # Получение размеров экрана
+        self.screen_rect = screen.get_rect()
+
+        # Размещение изображений на экране
+        self.loose_rect = self.loose_image.get_rect(center=self.screen_rect.center)
+        self.restart_rect = self.restart_button.get_rect(
+            center=(self.screen_rect.centerx, self.screen_rect.centery + 100))
+
+    def show(self, screen):
+        # Отображение изображений на экране
+        screen.blit(self.loose_image, self.loose_rect)
+        screen.blit(self.restart_button, self.restart_rect)
+
+    def check_restart_click(self):
+        # Проверка нажатия левой кнопки мыши в области кнопки Restart
+        for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = pygame.mouse.get_pos()
+                if self.restart_rect.collidepoint(mouse_pos):
+                    return True
+        return False
+
+
+class Loose:
+    def __init__(self, screen):
+        # Загрузка изображений
+        self.loose_image = pygame.image.load('loose.png')
+        self.restart_button = pygame.image.load('restart_button.png')
+
+        # Получение размеров экрана
+        self.screen_rect = screen.get_rect()
+
+        # Размещение изображений на экране
+        self.loose_rect = self.loose_image.get_rect(center=self.screen_rect.center)
+        self.restart_rect = self.restart_button.get_rect(center=(self.screen_rect.centerx, self.screen_rect.centery + 100))
+
+    def show(self, screen):
+        # Отображение изображений на экране
+        screen.blit(self.loose_image, self.loose_rect)
+        screen.blit(self.restart_button, self.restart_rect)
+
+    def check_restart_click(self):
+        # Проверка нажатия левой кнопки мыши в области кнопки Restart
+        for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                mouse_pos = pygame.mouse.get_pos()
+                if self.restart_rect.collidepoint(mouse_pos):
+                    return True
+        return False
+
+
+# Create instances of the Level and Mouse classes
+level = Level()
+mouse = Mouse()
+cat = Cat()
+
+# Game loop
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            running = False
+        elif event.type == KEYDOWN:
+            if event.key == K_UP:
+                level.move_player('up')
+            elif event.key == K_DOWN:
+                level.move_player('down')
+            elif event.key == K_LEFT:
+                level.move_player('left')
+            elif event.key == K_RIGHT:
+                level.move_player('right')
+
+    # Move the cat
+    level.move_cat()
+
+    # Draw the level and player on the screen
+    level.draw(screen)
+    mouse.draw(screen)
+
+    # Update the display
+    pygame.display.update()
+
+# Quit the game
+pygame.quit()
